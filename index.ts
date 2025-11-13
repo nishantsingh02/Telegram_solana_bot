@@ -5,9 +5,13 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmTransac
 import { message } from "telegraf/filters";
 import { getPrivateKey, isValidPublicKey } from "./validator";
 import bs58 from "bs58";
+import { PrismaClient } from "./generated/prisma/client";
+import { encrypt, decrypt } from "./encryption";
 
-//TODO: use a db insted of in memmory storage
-const USER: Record<string, Keypair> = {};
+// use a db insted of in memmory storage
+// const USER: Record<string, Keypair> = {};
+
+const prisma = new PrismaClient()
 
 const connection = new Connection("https://solana-devnet.g.alchemy.com/v2/lbd-9159msvd8sYL-suzv")
 
@@ -72,8 +76,23 @@ bot.action("generate_wallet", async (ctx) => {
   try {
     ctx.answerCbQuery("Generating new wallet...");
     const keypair = Keypair.generate();
-    const userId = ctx.from.id
-    USER[userId] = keypair; // we need to do a db call for this
+    const userId = ctx.from.id.toString();
+
+
+    // USER[userId] = keypair; // we need to do a db call for this
+
+    await prisma.wallet.upsert({
+        where: { userId },
+        update: {
+            publicKey: keypair.publicKey.toBase58(),
+            privateKey: encrypt(bs58.encode(keypair.secretKey))
+        },
+        create: {
+            userId,
+            publicKey: keypair.publicKey.toBase58(),
+            privateKey: encrypt(bs58.encode(keypair.secretKey))
+        }
+    })
 
     return ctx.reply(
        `💰 **Balance:** 0 SOL (\$0.00)
@@ -110,13 +129,18 @@ bot.action("export_private_key", async (ctx) => {
     try {
         ctx.answerCbQuery("Loading your privateKey...")
         const userId = ctx.from.id
-        const keypair = USER[userId]
+        // const keypair = USER[userId]
+
+        const keypair = await prisma.wallet.findUnique({
+            where: {userId: userId.toString()}
+        })
 
         if(!keypair) {
             return ctx.reply("❌ You don't have a wallet yet.\nGenerate one first.")
         }
 
-        const privateKeyBase58 = bs58.encode(keypair.secretKey);
+        // const privateKeyBase58 = (bs58.encode(keypair.secretKey));
+        const privateKeyBase58 = decrypt(keypair.privateKey);
 
         return ctx.reply(
             `🔐 **Your Private Key**  
@@ -134,9 +158,13 @@ bot.action("export_private_key", async (ctx) => {
 
 bot.action("view_address", async (ctx) => {
     try {
-    ctx.answerCbQuery("")
+    ctx.answerCbQuery("Viewing the address...")
     const userId = ctx.from.id
-    const keypair = USER[userId]
+    // const keypair = USER[userId]
+
+    const keypair = await prisma.wallet.findUnique({
+        where: {userId: userId.toString()}
+    })
 
     if (!keypair) {
         return ctx.reply("❌ You don't have a wallet yet.\nGenerate one first.", {
@@ -151,7 +179,7 @@ bot.action("view_address", async (ctx) => {
 
         ctx.reply(`👁️ **Your Wallet Address**
 
-        \`${ keypair.publicKey.toBase58() }\`
+        \`${ keypair.publicKey }\`
 
         📥 *Tap to copy*
 
