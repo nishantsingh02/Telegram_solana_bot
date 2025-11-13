@@ -8,18 +8,15 @@ import bs58 from "bs58";
 import { PrismaClient } from "./generated/prisma/client";
 import { encrypt, decrypt } from "./encryption";
 
-// use a db insted of in memmory storage
-// const USER: Record<string, Keypair> = {};
-
 const prisma = new PrismaClient()
 
-const connection = new Connection("https://solana-devnet.g.alchemy.com/v2/lbd-9159msvd8sYL-suzv")
+const connection = new Connection(process.env.RPC_TOKEN || "")
 
 const PENDING_REQUEST: Record<string, {
     type: "SEND_SOL" | "SEND_TOKEN",
     amount?: number,
     to? : string
-}> = {}; // key: string , value: object
+}> = {}; // {key: string , value: object}
 
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
@@ -62,6 +59,10 @@ Choose an option below to begin 🚀`;
       [
         Markup.button.callback("💰 Check Balance", "check_balance"),
         Markup.button.callback("📊 Transaction History", "tx_history"),
+      ],
+      [
+        Markup.button.callback("🔄 Refer Friends", "refer_friends"),
+        Markup.button.callback("ℹ️ Help", "help")
       ],
       [
         Markup.button.callback("💸 Send SOL", "send_sol_menu"),
@@ -124,6 +125,103 @@ bot.action("generate_wallet", async (ctx) => {
     return ctx.reply("❌ An error occurred. Please try again."); // this shows its on the screen
   }
 });
+
+bot.action("refer_friends", async (ctx) => {
+    try {
+        ctx.reply(`🔗 **Refer & Earn**
+
+Invite your friends to use *NishuWallet Bot* and help them explore Solana in the easiest way!
+
+Share this link with your friends 👇  
+\`https://t.me/NishuTradeX_bot?start=ref_nishant\`
+
+🎁 **Why Refer?**
+• Help your friends learn Web3  
+• Grow the community  
+• Support the developer  
+• More features coming soon!
+
+👤 **Maintainer:** Nishant Singh  
+🐦 **X:** [@nishantsingh211](https://x.com/nishantsingh211)`,{
+    parse_mode: "Markdown"
+})
+    } catch(error) {
+        await ctx.reply("⚠️ An error occurred. Please try again.")
+    }
+})
+
+bot.action("help", async (ctx) => {
+    try {
+        ctx.reply(
+`❓ **Help & Support**
+
+Need assistance? You can always contact the creator of this bot.
+If you're facing any issues, have questions, or want to request new features, I'm here to help.
+
+👤 **Developer:** *Nishant Singh*  
+🐦 **X Profile:** [@nishantsingh211](https://x.com/nishantsingh211)
+
+Feel free to reach out anytime! 🚀`,
+{ parse_mode: "Markdown" }
+);
+
+    } catch(error) {
+        await ctx.reply("⚠️ An error occurred. Please try again.")
+    }
+})
+
+// balance button code
+bot.action("check_balance", async (ctx) => {
+  try {
+    ctx.answerCbQuery("Checking balance...");
+
+    const userId = ctx.from.id.toString();
+
+    // Fetch wallet from DB
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId }
+    });
+
+    if (!wallet) {
+      return ctx.reply(
+        "❌ You don't have a wallet yet.\nPlease generate one first.",
+        { parse_mode: "Markdown" }
+      );
+    }
+
+    // Get balance from Solana
+    const publicKey = new PublicKey(wallet.publicKey);
+    const balanceLamports = await connection.getBalance(publicKey);
+    const balanceSOL = balanceLamports / LAMPORTS_PER_SOL;
+
+    return ctx.reply(
+`💰 **Your SOL Balance**
+
+• **Address:** \`${wallet.publicKey}\`  
+• **Balance:** **${balanceSOL.toFixed(2)} SOL**
+
+🔄 Refresh using the *Check Balance* button.`,
+      {
+        parse_mode: "Markdown",
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback("💰 Check Balance", "check_balance"),
+            Markup.button.callback("🔄 Refresh", "check_balance")
+          ],
+          [
+            Markup.button.callback("🔑 Generate Wallet", "generate_wallet"),
+            Markup.button.callback("👁️ View Address", "view_address")
+          ]
+        ])
+      }
+    );
+
+  } catch (error) {
+    console.log(error);
+    return ctx.reply("❌ Failed to fetch balance. Please try again.");
+  }
+});
+
 
 bot.action("export_private_key", async (ctx) => {
     try {
